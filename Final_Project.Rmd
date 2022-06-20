@@ -1,0 +1,421 @@
+---
+title: "What Makes a Penguin's Weight?"
+author: "Jessica Nguyen"
+date: '2022-06-09'
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r data and libraries, include=FALSE}
+library(psych)
+library(car)
+library(multcomp)
+library(ggplot2)
+library(naniar)
+library(here)
+library(knitr)
+library(tidyverse)
+
+#Reading Data
+peng <- read.csv(here("penguin_data.csv"))
+
+#subsetting data
+used_vars <- c("species", "sex", "culmen_length_mm", "body_mass_g", "island")
+penguins <- subset(peng, select = used_vars)
+penguins <- penguins %>% replace_with_na(replace = list(sex = ''))
+penguins <- penguins %>% replace_with_na(replace = list(sex = '.'))
+
+#remove rows with NA values in any column
+penguins <- penguins %>% na.omit()
+
+#Making species into factor
+penguins$species <- as.factor(penguins$species)
+
+#Making sex into factor
+penguins$sex <- as.factor(penguins$sex)
+
+penguins$island <- as.factor(penguins$island)
+
+levels(penguins$species) <- c("Adelie Penguin",
+                                       "Chinstrap Penguin",
+                                       "Gentoo Penguin")  # Renaming levels so that it's not as long
+```
+## Abstract
+
+This analysis is motivated by an enthusiasm for penguins and the desire to work with said animal. In this analysis, the body mass in penguins is explored. First, an ANOVA test was conducted to determine if the species of a penguin played a significant part in determining the body mass of a penguin. After conducting the ANOVA test, a multivariate linear model was developed to see which factors played a part in predicting a penguin's body mass. The analysis concluded that a penguin's culmen length, species, and sex were significant predictors in predicting body mass.
+
+## Introduction
+
+The Palmer Penguins dataset contains the size measurements for the three penguin species observed in three different islands in Palmer Archipelago, Antarctica. The data was collected during the summers of 2007, 2008, and 2009 by Dr. Kristen Gorman and the Palmer Station, Antarctica LTER, a member of the Long Term Ecological Research Network. The research was conducted in accordance with an Antarctic Conservation Act permit to WRF (2008-020), in addition to Canadian Committee on Animal Care guidelines (Simon Fraser University, SFU, Animal Care Permit 890B-08 to KBG and TDW) (Gorman 2014). For each penguin mating season, study nests, where pairs of adults were present, were marked and monitored. Once the study nests reached the one-egg stage, the penguin adults were captured and measured. After handling, the penguins were released to their study nest and further monitored until the nest reached to two eggs (Gorman 2014).
+
+Gorman's study sought to understand the ecological sexual dimorphism and environmental variability within Artic Penguins. The goal of this analysis is to analyze the body mass of the penguins observed in this dataset. My questions are: does the body weight of penguins differ by species and what can predict body weight? Other studies have shown that body weight of penguins do differ by species (DK 2017). I hypothesize that there is a statistical difference in body mass between the three species of penguins observed, and that the culmen length, sex, and species are significant in predicting the body weight of a penguin while island is not.
+
+## Exploratory Data Analysis
+
+### Data Cleaning
+
+| Variable        | Variable Description           |
+| ------------- |:-------------:|
+| species      | Species of Penguin |
+| sex      | Sex of Penguin      |
+| island | island of penguin     |
+| culmen_length_mm | length of culmen (beak) in millimeters     |
+| body_mass_g | weight of penguin in grams     |
+Table: The Five Variables Used For this Analysis
+
+For data cleaning, the five variables listed above were subsetted from the original dataset. Variables species, sex, and island are categorical variables, while culmen_length_mm, and body_mass_g are the numeric variables. The original dataset had 11 observations with missing values, which accounted for around 3% of the dataset. The observations with missing values were removed from the dataset.
+
+### Histogram
+
+A histogram was used to explore the distribution of the response variable, body_mass_g. At first glance, the histogram looks like it has a slight right skew. When shapiro wilk's is performed on body_mass_g, the p-value is 3.568e-08, which is smaller than 0.05 and therefore not normally distributed. We can however, overlook this with the Central Limit Theorem, which states that a distribution of a sample can be considered normal if the sample size is large enough. Our dataset has a total of 333 observations, so therefore by CLT, body_mass_g is normal.
+
+```{r, warnings = FALSE, echo=FALSE}
+c1 <- rgb(173,216,230,max = 255, alpha = 80, names = "lt.blue")
+c2 <- rgb(255,192,203, max = 255, alpha = 80, names = "lt.pink")
+c3 <- rgb(0,250,154, max = 255, alpha = 80, names = "lt.green")
+hist(penguins$body_mass_g, col = c1, xlab = 'Body Mass in Grams', main = 'Histogram of Body Mass')
+```
+
+**Figure 1:** Histogram of the Body Mass in Grams. Under CLT, the distribution is normal.
+
+A histogram was also used to explore the distribution of Culmen Length in Millimeters. Looking at the histograms, none of the data appears to be normally distributed, however with CLT, we can say that the data is normally distributed due to the large sample size.
+
+```{r, warnings = FALSE, echo=FALSE}
+hist(penguins$culmen_length_mm, col = c2, xlab = 'Culmen Length in Millimeters', main = 'Histogram of Culmen Length')
+```
+
+**Figure 2:** Histogram of Culmen Length in Millimeters. Under CLT, the distribution is normal
+
+### Boxplot
+
+Boxplots were used to visualize the relationship between body_mass_g and the categorical variables.
+
+```{r, warnings = FALSE, echo=FALSE}
+ggplot(data = penguins, aes(species, body_mass_g, fill = species)) + geom_boxplot(alpha = 0.5)
+```
+
+**Figure 3:** Boxplot of body_mass_g by species.
+
+The median line of the Gentoo Penguin is completely outside of the range of the Adelie Penguin and Chinstrap Penguin, which indicates that there is likely to be a difference beteen the Gentoo Penguin species and the other two. There are two outliers in body mass for the Chinstrap Penguin.
+
+```{r, warnings = FALSE, echo=FALSE}
+ggplot(data = penguins, aes(sex, body_mass_g, color = sex)) + geom_boxplot()
+```
+
+**Figure 4:** Boxplot of body_mass_g by sex.
+
+The median body mass of male penguins is larger than the median body mass of female penguins. With that being said, there is still an overlap between male and female penguins, so I can not say that just from looking at the graph that sex has a significant effect on body_mass_gg. It is also worth noting that the male data looks more skewed than the female data, just from looking at the whiskers.
+
+
+### Scatter Plot
+
+Scatterplots were used to visualize the relationship between the numerical variables. From figure 5, we can see that there is a positive relationship between culmen_length and body_mass.
+
+```{r warnings = FALSE, echo=FALSE}
+ggplot(data = penguins, aes(culmen_length_mm,body_mass_g ,color=species,shape=species)) +
+  geom_point() +
+  theme_bw() +
+  labs(title = 'Body Mass~Culmen Length')
+```
+
+**Figure 5:** Scatterplot of Body Mass ~ Culmen Length. One can also see the body mass among species.
+
+## Statistical Method
+
+In this section, an ANOVA was conducted to analyze the difference of body mass means between species. A multivariate linear model was then created to see if the 4 other variables are significant predictors for body mass.
+
+### Anova
+
+An ANOVA test is a statistical test that depending on the results, tells one if there are any statistical differences between the means of different groups. The most basic form of ANOVA is the one-way ANOVA, which is what was used in this analysis. For this anova test, the body weight is the dependent variable while the independent predictor is species.
+
+There are three assumptions with an ANOVA test. The first assumption is that the data is a random sample. In the data collection method, the scientists randomly chose nesting penguins, therefore the sample is random. The second assumption is homogeneity of variance. This assumption can be checked by looking at the "Residuals vs Fitted" plot. Figure 6 shows our residuals vs fitted plot; the theoretical data (red line) is on the 0 line, which means that we can assume equal variance. Finally, the third assumption is the assumption of normality, which we can see from the QQ-plot, which is at the top right plot in Figure 6, that the residuals follow a linear trend and therefore can be considered normal. The shapiro wilk's test was also performed on the residuals to ensure that the assumption of normality was met. With the three asumptions met, we can run a One-Way ANOVA test with body_mass_g as the dependent variable, and species as the independent variable.
+
+
+```{r warnings = FALSE, echo=FALSE}
+spw <- lm(body_mass_g ~ species, data = penguins)
+par(mfrow=c(2,2))
+plot(spw)
+```
+
+**Figure 6:** Diagnostic plots to check for ANOVA assumptions
+
+If the p-value for the ANOVA test is less than 0.05, then I can say that there is a significant difference in the means of body mass for species.
+
+### Tukey's Test
+
+Tukey's Test is a statistical test that is used to find means that are statistically different from each other. After gaining the results from ANOVA, I used the Tukey Test to see which species are statistically different from each other.
+
+### Multivariate Linear Model
+
+A linear regression model is a mathematical model used to model the relationship between a dependent variable and one or more independent variable. The assumptions of a linear model is that of the same as an ANOVA test: the data must be a random sample, there needs to be a homogeinity in variance, and the response variable has to be a normal distribution. Looking at our Residuals vs Fitted and QQ-plot in Figure 7, we can say that the residuals are normally distributed and have equal variance. Our sample is also random as well.
+
+
+```{r warnings = FALSE, echo=FALSE}
+lmm <- lm(body_mass_g ~ culmen_length_mm + species + sex + island, data = penguins)
+par(mfrow=c(2,2))
+plot(lmm)
+```
+
+**Figure 7:** Diagnostic plot on linear model.
+
+If I had more than one numerical data, I would have to look at the collinearity of the variables, because a linear regression model can not have highly correlated variables.
+
+After fitting the linear model, I used the summary() function of R in order to test the significance of the predictors. If the p-value is below 0.05, then the independent variable is a significant predictor.
+
+## Results
+
+### Anova and Tukey Test
+
+Our null hypothesis is: $\mu_{\text{Adelie}} = \mu_{\text{Chinstrap}} = \mu_{\text{Gentoo}}$
+
+Our alternative hypothesis is $\mu_{i} \neq \mu_j$ for at least one of the species.
+
+The p-value from the one-way ANOVA test was <2e-16, which is less than 0.05. With that, we can reject the null hypothesis. There is statistical evidence to reject that the body weight means of each species are the same.
+
+```{r warnings = FALSE, echo=FALSE}
+aov_peng <- aov(body_mass_g~species, data = penguins)
+tukey <- TukeyHSD(aov_peng) #Gentoo Penguin has a significantly different body mass compared to the other penguins
+tuk_plot <- function (x, xlab, ylab, ylabels = NULL, ...) {
+  for (i in seq_along(x)) {
+    xi <- x[[i]][, -4L, drop = FALSE]
+    yvals <- nrow(xi):1L
+    dev.hold()
+    on.exit(dev.flush())
+    plot(c(xi[, "lwr"], xi[, "upr"]), rep.int(yvals, 2L), 
+         type = "n", axes = FALSE, xlab = "", ylab = "", main = NULL, 
+         ...)
+    axis(1, ...)
+    # change for custom axis labels
+    if (is.null(ylabels)) ylabels <- dimnames(xi)[[1L]]
+
+    axis(2, at = nrow(xi):1, labels = ylabels, 
+         srt = 0, ...)
+    abline(h = yvals, lty = 1, lwd = 0.5, col = "lightgray")
+    abline(v = 0, lty = 2, lwd = 0.5, ...)
+    segments(xi[, "lwr"], yvals, xi[, "upr"], yvals, ...)
+    segments(as.vector(xi), rep.int(yvals - 0.1, 3L), as.vector(xi), 
+             rep.int(yvals + 0.1, 3L), ...)
+    title(main = paste0(format(100 * attr(x, "conf.level"), 
+                               digits = 2L), "% family-wise confidence level\n"), 
+          # change for custom axis titles
+          xlab = xlab, ylab = ylab)
+
+    box()
+    dev.flush()
+    on.exit()
+  }
+}
+
+tuk_plot(tukey, "Difference in Mean Levels of Species", "Species Comparison", c("CP~AP", "GP~AP", "GP~CP"))
+```
+
+**Figure 8:** Graphs the Tukey Test. The graph shows, for each species combination, the value of the difference between the means and their respective 95% CI. The dashed line indicates the point where the difference between the means is equal to zero, so when the means are equal.
+
+Figure 8 shows the results of the Tukey Test in the form of a visualization. What this visualization shows is that the body mass of Chinstrap penguins and Adelie Penguins are very similar. The dashed line intersects the confidence interval. The p-adjacent for the two penguins is also 0.916431, which is very high and that means that the means of the two species are not statistically different. However the body mass comparison of Gentoo penguins and the other two are very far away from the line. The p-value adjacents for these relationships are also 0, which is less than 0.05. What we can say from that is that the body mass mean for Gentoo Penguins is significantly different from the other two penguins. 
+
+### Multivariate Linear Model
+
+The null hypothesis for 
+
+| Variable        | P-Value           |
+| ------------- |:-------------:|
+| Intercept      | 7.36e-14 |
+| culmen_length_mm      | 1.29e-05      |
+| speciesChinstrap Penguin | 0.0017     |
+| speciesGentoo Penguin | < 2e-16     |
+| sexMALE | < 2e-16     |
+| islandDream | 0.9805     |
+| islandTorgersen | 0.9678     |
+Table: The p-values from summary()
+
+From the p-values, we can see that culmen_length_mm, species, and sex are statistically significant predictors. Island however, is not a statistically significant predictor.
+
+## Discussion
+
+From the ANOVA and Tukey test, we found out that there is a significant difference in the body weight of Gentoo penguins and Adelie and Chinstrap penguin. With our results, we can say that the weight of penguins does depend on the species. We also found out that the culmen length and sex of the penguins affect the body weight too with our multivariate linear regression model. Female Penguins who have a small culmen length are probably going to weigh less than female penuins with a big culmen length. Female penguins in general will probably weigh less than male penguins.
+
+There are many limitations with my analysis. For one, the data itself is collected from 2007-2009. It is vastly outdated. Global warming has affected Antartica Penguins signifantly, so the penguins who live in 2022 will behave and have different physical structure than the penguins from 2007. I also only explored 3 categorical and 2 numerical variables of this dataset. With more time, I would like to explore the other variables, such as clutch_completion and culmen_depth. I'm sure that if I explore those variables, I will gain more predictors for body weight in penguins.
+
+## Citations
+
+Animal: The Definitive Visual Guide. (2017). United Kingdom: Dorling Kindersley Limited.
+
+EmilyEmily5911 and NateNate9. “How to Edit a Tukey Test Plot in R.” Stack Overflow, 2020, https://stackoverflow.com/questions/60794019/how-to-edit-a-tukey-test-plot-in-r. 
+
+Gorman KB, Williams TD, Fraser WR (2014) Ecological Sexual Dimorphism and Environmental Variability within a Community of Antarctic Penguins (Genus Pygoscelis). PLoS ONE 9(3): e90081. https://doi.org/10.1371/journal.pone.0090081
+
+H. Wickham. ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York, 2016.
+
+John Fox and Sanford Weisberg (2019). An {R} Companion to Applied Regression, Third
+Edition. Thousand Oaks CA: Sage. URL:
+https://socialsciences.mcmaster.ca/jfox/Books/Companion/
+
+Kirill Müller (2020). here: A Simpler Way to Find Your Files. R package version 1.0.1.
+https://CRAN.R-project.org/package=here
+
+Nicholas Tierney, Di Cook, Miles McBain and Colin Fay (2021). naniar: Data Structures,
+Summaries, and Visualisations for Missing Data. R package version 0.6.1.
+https://CRAN.R-project.org/package=naniar
+
+Revelle, W. (2022) psych: Procedures for Personality and Psychological Research,
+Northwestern University, Evanston, Illinois, USA,
+https://CRAN.R-project.org/package=psych Version = 2.2.5.
+
+Torsten Hothorn, Frank Bretz and Peter Westfall (2008). Simultaneous Inference in
+General Parametric Models. Biometrical Journal 50(3), 346--363.
+
+Wickham et al., (2019). Welcome to the tidyverse. Journal of Open Source Software,
+4(43), 1686, https://doi.org/10.21105/joss.01686
+
+Yihui Xie (2015) Dynamic Documents with R and knitr. 2nd edition. Chapman and Hall/CRC.
+ISBN 978-1498716963
+
+## Appendix
+
+```{r}
+#Reading Data
+peng <- read.csv(here("penguin_data.csv"))
+
+#subsetting data
+used_vars <- c("species", "sex", "culmen_length_mm", "body_mass_g", "island")
+penguins <- subset(peng, select = used_vars)
+penguins <- penguins %>% replace_with_na(replace = list(sex = ''))
+penguins <- penguins %>% replace_with_na(replace = list(sex = '.'))
+
+#remove rows with NA values in any column
+penguins <- penguins %>% na.omit()
+
+#Making species into factor
+penguins$species <- as.factor(penguins$species)
+
+#Making sex into factor
+penguins$sex <- as.factor(penguins$sex)
+
+penguins$island <- as.factor(penguins$island)
+
+levels(penguins$species) <- c("Adelie Penguin",
+                                       "Chinstrap Penguin",
+                                       "Gentoo Penguin")  # Renaming levels so that it's not as long
+```
+
+```{r}
+# Histogram for body_mass_g
+hist(penguins$body_mass_g, col = c1, xlab = 'Body Mass in Grams', main = 'Histogram of Body Mass')
+
+#Shapiro test for body_mass_g
+shapiro.test(penguins$body_mass_g)
+```
+
+```{r}
+#Histogram for culmen_length_mm
+hist(penguins$culmen_length_mm, col = c2, xlab = 'Culmen Length in Millimeters', main = 'Histogram of Culmen Length')
+
+#shapiro test for culmen_length_mm
+shapiro.test(penguins$culmen_length_mm)
+```
+
+```{r}
+#Scatter plot body mass and culmen relationship
+ggplot(data = penguins, aes(culmen_length_mm,body_mass_g ,color=species,shape=species)) +
+  geom_point() +
+  theme_bw() +
+  labs(title = '')
+``` 
+
+
+```{r}
+# Boxplot of species category bodymassg
+ggplot(data = penguins, aes(species, body_mass_g, fill = species)) + geom_boxplot(alpha = 0.5)
+```
+
+```{r}
+# Boxplot of sex category bodymassg
+ggplot(data = penguins, aes(sex, body_mass_g, color = sex)) + geom_boxplot()
+```
+
+```{r}
+#Fitting linear model
+spw <- lm(body_mass_g ~ species, data = penguins)
+
+#diagnostic plot
+par(mfrow=c(2,2))
+plot(spw) #Variance looks equal
+```
+```{r}
+qqPlot(spw$residuals) # Data looks normal
+```
+
+```{r}
+shapiro.test(spw$residuals) # Data is normal
+```
+
+```{r}
+#Performing Anova on data
+aov_peng <- aov(body_mass_g~species, data = penguins)
+summary(aov_peng)
+```
+
+```{r}
+#tukey test
+tukey <- TukeyHSD(aov_peng) #Gentoo Penguin has a significantly different body mass compared to the other penguins
+tukey
+```
+```{r}
+#Plot For tukey (stack overflow, in reference)
+tuk_plot <- function (x, xlab, ylab, ylabels = NULL, ...) {
+  for (i in seq_along(x)) {
+    xi <- x[[i]][, -4L, drop = FALSE]
+    yvals <- nrow(xi):1L
+    dev.hold()
+    on.exit(dev.flush())
+    plot(c(xi[, "lwr"], xi[, "upr"]), rep.int(yvals, 2L), 
+         type = "n", axes = FALSE, xlab = "", ylab = "", main = NULL, 
+         ...)
+    axis(1, ...)
+    # change for custom axis labels
+    if (is.null(ylabels)) ylabels <- dimnames(xi)[[1L]]
+
+    axis(2, at = nrow(xi):1, labels = ylabels, 
+         srt = 0, ...)
+    abline(h = yvals, lty = 1, lwd = 0.5, col = "lightgray")
+    abline(v = 0, lty = 2, lwd = 0.5, ...)
+    segments(xi[, "lwr"], yvals, xi[, "upr"], yvals, ...)
+    segments(as.vector(xi), rep.int(yvals - 0.1, 3L), as.vector(xi), 
+             rep.int(yvals + 0.1, 3L), ...)
+    title(main = paste0(format(100 * attr(x, "conf.level"), 
+                               digits = 2L), "% family-wise confidence level\n"), 
+          # change for custom axis titles
+          xlab = xlab, ylab = ylab)
+
+    box()
+    dev.flush()
+    on.exit()
+  }
+}
+
+#Plotting tukey
+tuk_plot(tukey, "Difference in Mean Levels of Species", "Species Comparison", c("CP~AP", "GP~AP", "GP~CP"))
+```
+
+```{r}
+#Fitting multivariate model
+lmm <- lm(body_mass_g ~ culmen_length_mm + species + sex + island, data = penguins)
+#Diagnostic plot
+par(mfrow=c(2,2))
+plot(lmm)
+#Looking at P-values
+summary(lmm)
+```
+
+```{r}
+#Citations
+citation("ggplot2")
+citation("car")
+citation('psych')
+citation('multcomp')
+citation('naniar')
+citation('here')
+citation('knitr')
+citation('tidyverse')
+```
